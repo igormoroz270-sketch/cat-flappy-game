@@ -43,13 +43,16 @@ let score = 0;
 
 /* ================= CURRENCY ================= */
 let savedCoins = parseInt(localStorage.getItem("coins")) || 0;
-let stars = 0; // Telegram Stars (пока для демо, реально через API)
+let stars = 0; // Telegram Stars (пока демо, реально через API)
 
 // Улучшения игрока
 const upgrades = {
-  fireRate: { level: 0, max: 5, price: 50 }, // Уменьшает cooldown
-  hp: { level: 0, max: 3, price: 100 }      // Увеличивает максимум здоровья
+  fireRate: { level: 0, max: 5, price: 50 },
+  hp: { level: 0, max: 3, price: 100 }
 };
+
+// Кнопки магазина
+let shopButtons = [];
 
 /* ================= BUTTONS ================= */
 const buttons = {
@@ -66,7 +69,10 @@ canvas.addEventListener("click", e => {
 
   if (gameState === "menu" && !shopOpen) {
     if (hitBtn(x, y, buttons.play)) startGame();
-    if (hitBtn(x, y, buttons.shop)) shopOpen = true;
+    if (hitBtn(x, y, buttons.shop)) {
+      shopOpen = true;
+      setupShopButtons();
+    }
   } else if (shopOpen) {
     handleShopClick(x, y);
   }
@@ -77,8 +83,7 @@ canvas.addEventListener("click", e => {
 canvas.addEventListener("touchmove", e => {
   if (gameState !== "game") return;
   const r = canvas.getBoundingClientRect();
-  player.targetX =
-    e.touches[0].clientX - r.left - player.w / 2;
+  player.targetX = e.touches[0].clientX - r.left - player.w / 2;
 });
 
 /* ================= START GAME ================= */
@@ -142,15 +147,7 @@ function updateBullets() {
 function spawnEnemies() {
   if (Math.random() < 0.03) {
     const hp = Math.random() < 0.3 ? 5 : 3;
-    enemies.push({
-      x: Math.random() * (WIDTH - 40),
-      y: -50,
-      w: 40,
-      h: 40,
-      hp,
-      maxHp: hp,
-      speed: 2
-    });
+    enemies.push({ x: Math.random() * (WIDTH - 40), y: -50, w: 40, h: 40, hp, maxHp: hp, speed: 2 });
   }
 }
 
@@ -163,16 +160,7 @@ function updateEnemies() {
         bullets.splice(bi, 1);
         e.hp--;
         if (e.hp <= 0) {
-          // Монета с вероятностью 70%
-          if (Math.random() < 0.7) {
-            coins.push({
-              x: e.x + e.w / 2 - 8,
-              y: e.y + e.h / 2 - 8,
-              w: 16,
-              h: 16,
-              speed: 3
-            });
-          }
+          if (Math.random() < 0.7) coins.push({ x: e.x + e.w / 2 - 8, y: e.y + e.h / 2 - 8, w: 16, h: 16, speed: 3 });
           enemies.splice(ei, 1);
         }
       }
@@ -183,7 +171,7 @@ function updateEnemies() {
       player.hp--;
       if (player.hp <= 0) {
         gameOver = true;
-        savedCoins += score; // сохраняем заработанные монеты
+        savedCoins += score;
         localStorage.setItem("coins", savedCoins);
       }
     }
@@ -194,12 +182,10 @@ function updateEnemies() {
 function updateCoins() {
   coins.forEach((c, i) => {
     c.y += c.speed;
-
     if (rectHit(player, c)) {
       coins.splice(i, 1);
       score += 1;
     }
-
     if (c.y > HEIGHT) coins.splice(i, 1);
   });
 }
@@ -218,7 +204,6 @@ function draw() {
   enemies.forEach(e => {
     ctx.fillStyle = "red";
     ctx.fillRect(e.x, e.y, e.w, e.h);
-
     ctx.fillStyle = "black";
     ctx.fillRect(e.x, e.y - 6, e.w, 4);
     ctx.fillStyle = "lime";
@@ -229,7 +214,7 @@ function draw() {
   ctx.fillStyle = "gold";
   coins.forEach(c => ctx.fillRect(c.x, c.y, c.w, c.h));
 
-  // HUD: жизнь и счёт
+  // HUD
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
   ctx.fillText("❤️ ".repeat(player.hp), 10, 20);
@@ -240,7 +225,6 @@ function draw() {
 function drawMenu() {
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
   ctx.fillStyle = "white";
   ctx.font = "28px Arial";
   ctx.fillText("🚀 Space Shooter", 70, 200);
@@ -256,13 +240,25 @@ function drawButton(b, text) {
   ctx.fillRect(b.x, b.y, b.w, b.h);
   ctx.strokeStyle = "white";
   ctx.strokeRect(b.x, b.y, b.w, b.h);
-
   ctx.fillStyle = "white";
   ctx.font = "20px Arial";
   ctx.fillText(text, b.x + 20, b.y + 32);
 }
 
 /* ================= SHOP ================= */
+function setupShopButtons() {
+  shopButtons = [];
+  let y = 180;
+  for (let key in upgrades) {
+    shopButtons.push({ type: "coin", key, x: 50, y: y - 20, w: 200, h: 30 });
+    y += 40;
+  }
+  // Донатная кнопка HP+1 за 5⭐
+  shopButtons.push({ type: "star", key: "hp", stars: 5, x: 50, y: y + 40, w: 200, h: 30 });
+  // Назад
+  shopButtons.push({ type: "back", x: buttons.back.x, y: buttons.back.y, w: buttons.back.w, h: buttons.back.h });
+}
+
 function drawShop() {
   ctx.fillStyle = "rgba(0,0,0,0.9)";
   ctx.fillRect(20, 100, 320, 440);
@@ -271,52 +267,42 @@ function drawShop() {
   ctx.font = "24px Arial";
   ctx.fillText("МАГАЗИН", 120, 140);
 
-  let y = 180;
+  ctx.font = "20px Arial";
+  shopButtons.forEach(b => {
+    let text = "";
+    if (b.type === "coin") {
+      const upg = upgrades[b.key];
+      text = `${b.key.toUpperCase()} LVL ${upg.level} - ${upg.price}💰`;
+    } else if (b.type === "star") text = `HP+1 за ${b.stars}⭐`;
+    else if (b.type === "back") text = "⬅ НАЗАД";
 
-  // Внутриигровые апгрейды
-  for (let key in upgrades) {
-    const upg = upgrades[key];
-    ctx.fillText(
-      `${key.toUpperCase()} LVL ${upg.level} - ${upg.price}💰`,
-      50,
-      y
-    );
-    y += 40;
-  }
-
-  // Донатные улучшения (Telegram Stars)
-  ctx.fillText("⭐ DONATE UPGRADES", 50, y + 20);
-  ctx.fillText("HP+1 за 5⭐", 50, y + 60);
-
-  drawButton(buttons.back, "⬅ НАЗАД");
+    ctx.fillStyle = "#222";
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = "white";
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = "white";
+    ctx.fillText(text, b.x + 10, b.y + 22);
+  });
 }
 
 function handleShopClick(x, y) {
-  let yPos = 180;
-  // Проверка покупки монетами
-  for (let key in upgrades) {
-    const upg = upgrades[key];
-    if (
-      hitBtn(x, y, { x: 50, y: yPos - 20, w: 200, h: 30 }) &&
-      savedCoins >= upg.price &&
-      upg.level < upg.max
-    ) {
-      savedCoins -= upg.price;
-      localStorage.setItem("coins", savedCoins);
-      upg.level++;
-      if (key === "fireRate") player.fireRate = Math.max(2, player.fireRate - 1);
-      if (key === "hp") player.maxHp++;
+  for (let b of shopButtons) {
+    if (hitBtn(x, y, b)) {
+      if (b.type === "coin") {
+        const upg = upgrades[b.key];
+        if (savedCoins >= upg.price && upg.level < upg.max) {
+          savedCoins -= upg.price;
+          localStorage.setItem("coins", savedCoins);
+          upg.level++;
+          if (b.key === "fireRate") player.fireRate = Math.max(2, player.fireRate - 1);
+          if (b.key === "hp") player.maxHp++;
+        }
+      } else if (b.type === "star") {
+        tg.sendData(JSON.stringify({ type: "buy_hp", stars: b.stars }));
+        alert(`Запрос на покупку HP+1 за ${b.stars}⭐ отправлен!`);
+      } else if (b.type === "back") shopOpen = false;
     }
-    yPos += 40;
   }
-
-  // Донатная покупка (демо)
-  if (hitBtn(x, y, { x: 50, y: yPos + 40, w: 200, h: 30 })) {
-    player.maxHp++;
-  }
-
-  // Назад
-  if (hitBtn(x, y, buttons.back)) shopOpen = false;
 }
 
 /* ================= GAME OVER ================= */
@@ -335,12 +321,7 @@ function hit(b, e) {
   return b.x > e.x && b.x < e.x + e.w && b.y > e.y && b.y < e.y + e.h;
 }
 function rectHit(a, b) {
-  return (
-    a.x < b.x + b.w &&
-    a.x + a.w > b.x &&
-    a.y < b.y + b.h &&
-    a.y + a.h > b.y
-  );
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 function hitBtn(x, y, b) {
   return x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h;
@@ -348,61 +329,3 @@ function hitBtn(x, y, b) {
 
 /* ================= START ================= */
 loop();
-/* ================= SHOP ================= */
-function drawShop() {
-  ctx.fillStyle = "rgba(0,0,0,0.9)";
-  ctx.fillRect(20, 100, 320, 440);
-
-  ctx.fillStyle = "white";
-  ctx.font = "24px Arial";
-  ctx.fillText("МАГАЗИН", 120, 140);
-
-  let y = 180;
-
-  // Внутриигровые апгрейды
-  for (let key in upgrades) {
-    const upg = upgrades[key];
-    ctx.fillText(
-      `${key.toUpperCase()} LVL ${upg.level} - ${upg.price}💰`,
-      50,
-      y
-    );
-    y += 40;
-  }
-
-  // Донатные улучшения (Telegram Stars)
-  ctx.fillText("⭐ DONATE UPGRADES", 50, y + 20);
-  ctx.fillText("HP+1 за 5⭐", 50, y + 60);
-
-  drawButton(buttons.back, "⬅ НАЗАД");
-}
-
-function handleShopClick(x, y) {
-  let yPos = 180;
-  // Проверка покупки монетами
-  for (let key in upgrades) {
-    const upg = upgrades[key];
-    if (
-      hitBtn(x, y, { x: 50, y: yPos - 20, w: 200, h: 30 }) &&
-      savedCoins >= upg.price &&
-      upg.level < upg.max
-    ) {
-      savedCoins -= upg.price;
-      localStorage.setItem("coins", savedCoins);
-      upg.level++;
-      if (key === "fireRate") player.fireRate = Math.max(2, player.fireRate - 1);
-      if (key === "hp") player.maxHp++;
-    }
-    yPos += 40;
-  }
-
-  // Донатная покупка (Telegram Stars)
-  // Здесь мы инициируем покупку через Telegram WebApp API
-  if (hitBtn(x, y, { x: 50, y: yPos + 40, w: 200, h: 30 })) {
-    tg.sendData(JSON.stringify({ type: "buy_hp", stars: 5 }));
-    alert("Запрос на покупку HP+1 отправлен!"); // Показываем уведомление
-  }
-
-  // Назад
-  if (hitBtn(x, y, buttons.back)) shopOpen = false;
-}
