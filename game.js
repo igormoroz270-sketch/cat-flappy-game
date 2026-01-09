@@ -42,16 +42,15 @@ let coins = [];
 let score = 0;
 
 /* ================= CURRENCY ================= */
-let savedCoins = parseInt(localStorage.getItem("coins")) || 0;
-let stars = 0; // Telegram Stars (пока демо, реально через API)
+let savedCoins = 0;
+let stars = 0;
+let playerId = "user123"; // уникальный ID игрока
 
-// Улучшения игрока
 const upgrades = {
   fireRate: { level: 0, max: 5, price: 50 },
   hp: { level: 0, max: 3, price: 100 }
 };
 
-// Кнопки магазина
 let shopButtons = [];
 
 /* ================= BUTTONS ================= */
@@ -60,6 +59,18 @@ const buttons = {
   shop: { x: 80, y: 350, w: 200, h: 50 },
   back: { x: 80, y: 550, w: 200, h: 50 }
 };
+
+/* ================= INIT PLAYER DATA ================= */
+fetch(`/player/${playerId}`)
+  .then(r => r.json())
+  .then(data => {
+    savedCoins = data.coins;
+    stars = data.stars;
+    player.hp = data.hp;
+    player.maxHp = data.hp;
+    upgrades.fireRate.level = data.fireRateLevel;
+    upgrades.hp.level = data.hpLevel;
+  });
 
 /* ================= INPUT ================= */
 canvas.addEventListener("click", e => {
@@ -73,9 +84,7 @@ canvas.addEventListener("click", e => {
       shopOpen = true;
       setupShopButtons();
     }
-  } else if (shopOpen) {
-    handleShopClick(x, y);
-  }
+  } else if (shopOpen) handleShopClick(x, y);
 
   if (gameState === "game" && gameOver) location.reload();
 });
@@ -127,11 +136,7 @@ function update() {
 /* ================= SHOOT ================= */
 function autoShoot() {
   if (player.fireCooldown-- > 0) return;
-  bullets.push({
-    x: player.x + player.w / 2 - 2,
-    y: player.y,
-    speed: 10
-  });
+  bullets.push({ x: player.x + player.w / 2 - 2, y: player.y, speed: 10 });
   player.fireCooldown = player.fireRate;
 }
 
@@ -172,7 +177,7 @@ function updateEnemies() {
       if (player.hp <= 0) {
         gameOver = true;
         savedCoins += score;
-        localStorage.setItem("coins", savedCoins);
+        saveProgress();
       }
     }
   });
@@ -192,15 +197,12 @@ function updateCoins() {
 
 /* ================= DRAW ================= */
 function draw() {
-  // Игрок
   ctx.fillStyle = "#00ffff";
   ctx.fillRect(player.x, player.y, player.w, player.h);
 
-  // Пули
   ctx.fillStyle = "yellow";
   bullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 10));
 
-  // Враги
   enemies.forEach(e => {
     ctx.fillStyle = "red";
     ctx.fillRect(e.x, e.y, e.w, e.h);
@@ -210,15 +212,14 @@ function draw() {
     ctx.fillRect(e.x, e.y - 6, (e.hp / e.maxHp) * e.w, 4);
   });
 
-  // Монеты
   ctx.fillStyle = "gold";
   coins.forEach(c => ctx.fillRect(c.x, c.y, c.w, c.h));
 
-  // HUD
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
   ctx.fillText("❤️ ".repeat(player.hp), 10, 20);
   ctx.fillText("💰 " + (savedCoins + score), WIDTH - 120, 20);
+  ctx.fillText("⭐ " + stars, WIDTH - 60, 40);
 }
 
 /* ================= MENU ================= */
@@ -241,7 +242,6 @@ function drawButton(b, text) {
   ctx.strokeStyle = "white";
   ctx.strokeRect(b.x, b.y, b.w, b.h);
   ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
   ctx.fillText(text, b.x + 20, b.y + 32);
 }
 
@@ -253,16 +253,13 @@ function setupShopButtons() {
     shopButtons.push({ type: "coin", key, x: 50, y: y - 20, w: 200, h: 30 });
     y += 40;
   }
-  // Донатная кнопка HP+1 за 5⭐
   shopButtons.push({ type: "star", key: "hp", stars: 5, x: 50, y: y + 40, w: 200, h: 30 });
-  // Назад
   shopButtons.push({ type: "back", x: buttons.back.x, y: buttons.back.y, w: buttons.back.w, h: buttons.back.h });
 }
 
 function drawShop() {
   ctx.fillStyle = "rgba(0,0,0,0.9)";
   ctx.fillRect(20, 100, 320, 440);
-
   ctx.fillStyle = "white";
   ctx.font = "24px Arial";
   ctx.fillText("МАГАЗИН", 120, 140);
@@ -292,17 +289,34 @@ function handleShopClick(x, y) {
         const upg = upgrades[b.key];
         if (savedCoins >= upg.price && upg.level < upg.max) {
           savedCoins -= upg.price;
-          localStorage.setItem("coins", savedCoins);
           upg.level++;
           if (b.key === "fireRate") player.fireRate = Math.max(2, player.fireRate - 1);
           if (b.key === "hp") player.maxHp++;
+          saveProgress();
         }
       } else if (b.type === "star") {
-        tg.sendData(JSON.stringify({ type: "buy_hp", stars: b.stars }));
-        alert(`Запрос на покупку HP+1 за ${b.stars}⭐ отправлен!`);
+        buyHPWithStars(b.stars).then(saveProgress);
       } else if (b.type === "back") shopOpen = false;
     }
   }
+}
+
+/* ================= DONATE ================= */
+function buyHPWithStars(amount) {
+  return fetch("/player/spendStars", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ playerId, stars: amount })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      player.maxHp = data.player.hp;
+      stars = data.player.stars;
+      alert("HP успешно добавлено!");
+    } else alert("Недостаточно звезд");
+    return data;
+  });
 }
 
 /* ================= GAME OVER ================= */
@@ -315,6 +329,25 @@ function drawGameOver() {
   ctx.font = "16px Arial";
   ctx.fillText("Tap to restart", 120, 340);
 }
+
+/* ================= SAVE PROGRESS ================= */
+function saveProgress() {
+  fetch("/player/saveProgress", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      playerId,
+      coins: savedCoins + score,
+      stars,
+      hp: player.maxHp,
+      fireRateLevel: upgrades.fireRate.level,
+      hpLevel: upgrades.hp.level
+    })
+  });
+}
+
+// Автосохранение каждые 5 секунд
+setInterval(saveProgress, 5000);
 
 /* ================= HELPERS ================= */
 function hit(b, e) {
