@@ -3,8 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <title>Space Shooter</title>
-
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<meta name="viewport"
+content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
 <style>
 body {
@@ -17,268 +19,216 @@ body {
 canvas {
   display: block;
   margin: 0 auto;
-  background: radial-gradient(#000, #020824);
-}
-.menu {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.85);
-  color: white;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 15px;
-}
-button {
-  padding: 12px 20px;
-  font-size: 18px;
-  border-radius: 8px;
-  border: none;
-}
-.quest {
-  font-size: 14px;
 }
 </style>
 </head>
 <body>
 
-<canvas id="game" width="360" height="640"></canvas>
-
-<!-- MAIN MENU -->
-<div id="menu" class="menu">
-  <h1>🚀 Space Shooter</h1>
-  <button onclick="startGame()">▶️ Играть</button>
-  <button onclick="openShop()">🛒 Магазин</button>
-  <div id="quests"></div>
-</div>
-
-<!-- SHOP -->
-<div id="shop" class="menu" style="display:none">
-  <h2>🛒 Магазин</h2>
-  <button onclick="buyDamage()">+Damage (100🪙)</button>
-  <button onclick="buyFireRate()">+Fire Rate (150🪙)</button>
-  <button onclick="buyHP()">+HP (200🪙)</button>
-  <button onclick="backToMenu()">⬅ Назад</button>
-</div>
+<canvas id="game"></canvas>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+/* ===== TELEGRAM ===== */
 const tg = window.Telegram?.WebApp;
 tg?.ready();
 tg?.expand();
 
-// ===== GAME STATE =====
-let screen = "menu"; // menu | game | shop
+/* ===== CANVAS (RETINA FIX) ===== */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-// ===== PLAYER =====
-let player = {
-  x: 160, targetX: 160, y: 520,
-  w: 40, h: 40,
-  hp: 5, damage: 1,
-  fireRate: 10, fireCooldown: 0,
-  speed: 0.15
+const DPR = window.devicePixelRatio || 1;
+const WIDTH = 360;
+const HEIGHT = 640;
+
+canvas.style.width = WIDTH + "px";
+canvas.style.height = HEIGHT + "px";
+canvas.width = WIDTH * DPR;
+canvas.height = HEIGHT * DPR;
+ctx.scale(DPR, DPR);
+
+/* ===== GAME STATE ===== */
+let gameOver = false;
+
+/* ===== PLAYER ===== */
+const player = {
+  x: WIDTH / 2 - 20,
+  y: HEIGHT - 80,
+  w: 40,
+  h: 40,
+  hp: 3,
+  maxHp: 3,
+  targetX: WIDTH / 2 - 20,
+  speed: 0.15,
+  fireRate: 8,
+  fireCooldown: 0
 };
 
-let bullets=[], enemies=[], coins=[];
-let money = 0;
+let bullets = [];
+let enemies = [];
+let coins = [];
 
-// ===== DAILY QUESTS =====
-const QUESTS = [
-  { id: "kill5", text: "Уничтожить 5 врагов", goal: 5, reward: 50 },
-  { id: "collect20", text: "Собрать 20 монет", goal: 20, reward: 100 }
-];
-
-let daily = JSON.parse(localStorage.getItem("daily")) || {
-  date: new Date().toDateString(),
-  progress: { kill5: 0, collect20: 0 },
-  completed: {}
-};
-
-if (daily.date !== new Date().toDateString()) {
-  daily = {
-    date: new Date().toDateString(),
-    progress: { kill5: 0, collect20: 0 },
-    completed: {}
-  };
-  localStorage.setItem("daily", JSON.stringify(daily));
-}
-
-renderQuests();
-
-// ===== MENU FUNCTIONS =====
-function startGame() {
-  screen = "game";
-  document.getElementById("menu").style.display="none";
-}
-
-function openShop() {
-  screen = "shop";
-  document.getElementById("menu").style.display="none";
-  document.getElementById("shop").style.display="flex";
-}
-
-function backToMenu() {
-  screen = "menu";
-  document.getElementById("shop").style.display="none";
-  document.getElementById("menu").style.display="flex";
-}
-
-// ===== INPUT =====
+/* ===== INPUT ===== */
 canvas.addEventListener("touchmove", e => {
-  if (screen!=="game") return;
-  let r = canvas.getBoundingClientRect();
-  player.targetX = e.touches[0].clientX - r.left - player.w/2;
+  const rect = canvas.getBoundingClientRect();
+  player.targetX =
+    e.touches[0].clientX - rect.left - player.w / 2;
 });
 
-// ===== LOOP =====
+/* ===== GAME LOOP ===== */
 function loop() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-  if (screen==="game") {
+  if (!gameOver) {
     update();
     draw();
+  } else {
+    drawGameOver();
   }
 
   requestAnimationFrame(loop);
 }
 
-// ===== UPDATE =====
+/* ===== UPDATE ===== */
 function update() {
-  player.x += (player.targetX-player.x)*player.speed;
-  player.x=Math.max(0,Math.min(canvas.width-player.w,player.x));
+  // smooth movement
+  player.x += (player.targetX - player.x) * player.speed;
+  player.x = Math.max(0, Math.min(WIDTH - player.w, player.x));
 
   autoShoot();
   updateBullets();
   updateEnemies();
-  updateCoins();
   spawnEnemies();
 }
 
-// ===== AUTO SHOOT =====
+/* ===== SHOOTING ===== */
 function autoShoot() {
   if (player.fireCooldown-- > 0) return;
-  bullets.push({ x: player.x+20, y: player.y, speed:8 });
-  player.fireCooldown=player.fireRate;
+  bullets.push({
+    x: player.x + player.w / 2 - 2,
+    y: player.y,
+    speed: 10
+  });
+  player.fireCooldown = player.fireRate;
 }
 
-// ===== BULLETS =====
+/* ===== BULLETS ===== */
 function updateBullets() {
-  bullets.forEach((b,i)=>{
-    b.y-=b.speed;
-    if(b.y<0) bullets.splice(i,1);
+  bullets.forEach((b, i) => {
+    b.y -= b.speed;
+    if (b.y < 0) bullets.splice(i, 1);
   });
 }
 
-// ===== ENEMIES =====
+/* ===== ENEMIES ===== */
 function spawnEnemies() {
-  if (Math.random()<0.02)
-    enemies.push({ x:Math.random()*320,y:-40,w:40,h:40,hp:3,speed:2 });
-}
-
-function updateEnemies() {
-  enemies.forEach((e,i)=>{
-    e.y+=e.speed;
-
-    bullets.forEach((b,j)=>{
-      if(hit(b,e)){
-        bullets.splice(j,1);
-        e.hp--;
-        if(e.hp<=0){
-          enemies.splice(i,1);
-          spawnCoins(e);
-          daily.progress.kill5++;
-          saveDaily();
-        }
-      }
+  if (Math.random() < 0.025) {
+    const hp = Math.random() < 0.3 ? 5 : 3;
+    enemies.push({
+      x: Math.random() * (WIDTH - 40),
+      y: -50,
+      w: 40,
+      h: 40,
+      hp,
+      maxHp: hp,
+      speed: 2
     });
-  });
-}
-
-// ===== COINS =====
-function spawnCoins(e){
-  coins.push({x:e.x+20,y:e.y,vy:2});
-}
-
-function updateCoins(){
-  coins.forEach((c,i)=>{
-    c.y+=c.vy;
-    if(rectHit(player,{x:c.x,y:c.y,w:10,h:10})){
-      money++;
-      daily.progress.collect20++;
-      coins.splice(i,1);
-      saveDaily();
-    }
-  });
-}
-
-// ===== DRAW =====
-function draw(){
-  ctx.fillStyle="#0ff";
-  ctx.fillRect(player.x,player.y,40,40);
-
-  bullets.forEach(b=>{
-    ctx.fillStyle="yellow";
-    ctx.fillRect(b.x,b.y,4,10);
-  });
-
-  enemies.forEach(e=>{
-    ctx.fillStyle="red";
-    ctx.fillRect(e.x,e.y,e.w,e.h);
-  });
-
-  coins.forEach(c=>{
-    ctx.fillStyle="gold";
-    ctx.beginPath();
-    ctx.arc(c.x,c.y,5,0,Math.PI*2);
-    ctx.fill();
-  });
-
-  ctx.fillStyle="white";
-  ctx.fillText("Coins: "+money,10,20);
-}
-
-// ===== SHOP =====
-function buyDamage(){ if(money>=100){money-=100;player.damage++;}}
-function buyFireRate(){ if(money>=150&&player.fireRate>3){money-=150;player.fireRate--;}}
-function buyHP(){ if(money>=200){money-=200;player.hp++;}}
-
-// ===== DAILY QUESTS =====
-function renderQuests(){
-  const q=document.getElementById("quests");
-  q.innerHTML="<h3>📅 Ежедневные задания</h3>";
-  QUESTS.forEach(qs=>{
-    let done=daily.completed[qs.id];
-    q.innerHTML+=`
-      <div class="quest">
-        ${qs.text} (${daily.progress[qs.id]}/${qs.goal})
-        ${done?"✅":`<button onclick="claim('${qs.id}')">🎁</button>`}
-      </div>`;
-  });
-}
-
-function claim(id){
-  let q=QUESTS.find(x=>x.id===id);
-  if(daily.progress[id]>=q.goal&&!daily.completed[id]){
-    money+=q.reward;
-    daily.completed[id]=true;
-    saveDaily();
-    renderQuests();
   }
 }
 
-function saveDaily(){
-  localStorage.setItem("daily",JSON.stringify(daily));
-  renderQuests();
+function updateEnemies() {
+  enemies.forEach((e, ei) => {
+    e.y += e.speed;
+
+    // collision with bullets
+    bullets.forEach((b, bi) => {
+      if (hit(b, e)) {
+        bullets.splice(bi, 1);
+        e.hp--;
+        if (e.hp <= 0) enemies.splice(ei, 1);
+      }
+    });
+
+    // collision with player
+    if (rectHit(player, e)) {
+      enemies.splice(ei, 1);
+      player.hp--;
+      if (player.hp <= 0) gameOver = true;
+    }
+
+    if (e.y > HEIGHT) enemies.splice(ei, 1);
+  });
 }
 
-// ===== COLLISION =====
-function hit(b,e){return b.x>e.x&&b.x<e.x+e.w&&b.y>e.y&&b.y<e.y+e.h;}
-function rectHit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+/* ===== DRAW ===== */
+function draw() {
+  // player
+  ctx.fillStyle = "#00ffff";
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+
+  // bullets
+  ctx.fillStyle = "yellow";
+  bullets.forEach(b =>
+    ctx.fillRect(b.x, b.y, 4, 10)
+  );
+
+  // enemies + HP
+  enemies.forEach(e => {
+    ctx.fillStyle = "red";
+    ctx.fillRect(e.x, e.y, e.w, e.h);
+
+    // HP bar
+    ctx.fillStyle = "black";
+    ctx.fillRect(e.x, e.y - 6, e.w, 4);
+    ctx.fillStyle = "lime";
+    ctx.fillRect(
+      e.x,
+      e.y - 6,
+      (e.hp / e.maxHp) * e.w,
+      4
+    );
+  });
+
+  // UI
+  ctx.fillStyle = "white";
+  ctx.fillText("❤️ ".repeat(player.hp), 10, 20);
+}
+
+/* ===== GAME OVER ===== */
+function drawGameOver() {
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = "white";
+  ctx.font = "28px Arial";
+  ctx.fillText("GAME OVER", 90, 300);
+  ctx.font = "16px Arial";
+  ctx.fillText("Tap to restart", 120, 340);
+}
+
+/* ===== RESTART ===== */
+canvas.addEventListener("click", () => {
+  if (gameOver) location.reload();
+});
+
+/* ===== COLLISION ===== */
+function hit(b, e) {
+  return (
+    b.x > e.x &&
+    b.x < e.x + e.w &&
+    b.y > e.y &&
+    b.y < e.y + e.h
+  );
+}
+
+function rectHit(a, b) {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
 
 loop();
 </script>
-
 </body>
 </html>
