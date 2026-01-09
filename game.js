@@ -59,6 +59,36 @@ const buttons = {
   back: { x: 80, y: 550, w: 200, h: 50 }
 };
 
+/* ================= STARS BACKGROUND ================= */
+const starsBackground = [];
+for (let i = 0; i < 100; i++) {
+  starsBackground.push({
+    x: Math.random() * WIDTH,
+    y: Math.random() * HEIGHT,
+    size: Math.random() * 2 + 1,
+    speed: Math.random() * 0.5 + 0.2
+  });
+}
+
+function updateStars() {
+  starsBackground.forEach(star => {
+    star.y += star.speed;
+    if (star.y > HEIGHT) {
+      star.y = 0;
+      star.x = Math.random() * WIDTH;
+    }
+  });
+}
+
+function drawStars() {
+  ctx.fillStyle = "white";
+  starsBackground.forEach(star => {
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
 /* ================= INPUT ================= */
 canvas.addEventListener("click", e => {
   const r = canvas.getBoundingClientRect();
@@ -114,6 +144,7 @@ function update() {
   player.x += (player.targetX - player.x) * player.speed;
   player.x = Math.max(0, Math.min(WIDTH - player.w, player.x));
 
+  updateStars();
   autoShoot();
   updateBullets();
   spawnEnemies();
@@ -140,6 +171,20 @@ function updateBullets() {
   bullets.forEach((b, i) => {
     b.y -= b.speed;
     if (b.y < 0) bullets.splice(i, 1);
+  });
+}
+
+/* ================= DRAW BULLETS WITH TRAILS ================= */
+function drawBullets() {
+  bullets.forEach(b => {
+    ctx.fillStyle = "yellow";
+    ctx.fillRect(b.x, b.y, 4, 10);
+
+    ctx.strokeStyle = "rgba(255,255,0,0.5)";
+    ctx.beginPath();
+    ctx.moveTo(b.x + 2, b.y + 10);
+    ctx.lineTo(b.x + 2, b.y + 20);
+    ctx.stroke();
   });
 }
 
@@ -235,19 +280,23 @@ function updateExplosions() {
 
 /* ================= DRAW ================= */
 function draw() {
+  // Фон
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  drawStars();
+
+  // Пули
+  drawBullets();
+
   // Игрок
   ctx.fillStyle = "#00ffff";
   ctx.fillRect(player.x, player.y, player.w, player.h);
-
-  // Пули
-  ctx.fillStyle = "yellow";
-  bullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 10));
 
   // Враги с пульсацией
   enemies.forEach(e => {
     const pulse = Math.sin(Date.now() / 100) * 2;
     ctx.fillStyle = "red";
-    ctx.fillRect(e.x - pulse/2, e.y - pulse/2, e.w + pulse, e.h + pulse);
+    ctx.fillRect(e.x - pulse / 2, e.y - pulse / 2, e.w + pulse, e.h + pulse);
 
     ctx.fillStyle = "black";
     ctx.fillRect(e.x, e.y - 6, e.w, 4);
@@ -277,7 +326,7 @@ function draw() {
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
   const shake = player.tookDamage ? 2 : 0;
-  ctx.fillText("❤️ ".repeat(player.hp), 10 + Math.random()*shake, 20);
+  ctx.fillText("❤️ ".repeat(player.hp), 10 + Math.random() * shake, 20);
   ctx.fillText("💰 " + (savedCoins + score), WIDTH - 120, 20);
 }
 
