@@ -3,9 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <title>Cat Flappy Runner</title>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
 <style>
-  body { margin:0; background:#87ceeb; overflow:hidden; }
-  canvas { display:block; margin:0 auto; background:#87ceeb; }
+  body {
+    margin: 0;
+    background: #87ceeb;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  canvas {
+    display: block;
+    margin: 0 auto;
+    background: #87ceeb;
+  }
 </style>
 </head>
 <body>
@@ -16,44 +28,179 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let catY = 300;
-let vel = 0;
+const tg = window.Telegram?.WebApp;
+tg?.ready();
+tg?.expand();
+
+// ===== GAME STATE =====
+let cat = {
+  x: 80,
+  y: 300,
+  size: 40,
+  vel: 0
+};
+
 let gravity = 0.6;
 let jump = -10;
 let score = 0;
 let gameOver = false;
+let scoreSent = false;
 
+// ===== POINT =====
+let point = {
+  x: 360,
+  y: Math.random() * 500 + 50,
+  size: 20,
+  speed: 3
+};
+
+// ===== OBSTACLES =====
+let obstacles = [];
+let obstacleTimer = 0;
+const obstacleGap = 150;
+const obstacleWidth = 50;
+const obstacleSpeed = 3;
+
+// ===== INPUT =====
 document.addEventListener("click", () => {
-    if (!gameOver) vel = jump;
-    else location.reload();
+  if (!gameOver) {
+    cat.vel = jump;
+  } else {
+    location.reload();
+  }
 });
 
+// ===== GAME LOOP =====
 function loop() {
-    ctx.clearRect(0,0,360,640);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    vel += gravity;
-    catY += vel;
+  // Physics
+  cat.vel += gravity;
+  cat.y += cat.vel;
 
-    ctx.fillStyle = "orange";
-    ctx.fillRect(80, catY, 40, 40);
+  // Draw cat
+  ctx.fillStyle = "orange";
+  ctx.fillRect(cat.x, cat.y, cat.size, cat.size);
 
-    ctx.fillStyle = "black";
-    ctx.fillText("Score: " + score, 20, 40);
+  // ===== POINT =====
+  point.x -= point.speed;
+  ctx.fillStyle = "gold";
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, point.size / 2, 0, Math.PI * 2);
+  ctx.fill();
 
-    if (catY > 600 || catY < 0) {
-        gameOver = true;
-        sendScore();
+  if (point.x < -20) resetPoint();
+
+  if (checkCollision(cat, point)) {
+    score++;
+    resetPoint();
+  }
+
+  // ===== OBSTACLES =====
+  obstacleTimer++;
+  if (obstacleTimer > 120) {
+    createObstacle();
+    obstacleTimer = 0;
+  }
+
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    let o = obstacles[i];
+    o.x -= obstacleSpeed;
+
+    // Draw top
+    ctx.fillStyle = "#228B22";
+    ctx.fillRect(o.x, 0, obstacleWidth, o.top);
+
+    // Draw bottom
+    ctx.fillRect(
+      o.x,
+      o.top + obstacleGap,
+      obstacleWidth,
+      canvas.height
+    );
+
+    // Collision
+    if (
+      rectCollision(cat, { x: o.x, y: 0, w: obstacleWidth, h: o.top }) ||
+      rectCollision(cat, {
+        x: o.x,
+        y: o.top + obstacleGap,
+        w: obstacleWidth,
+        h: canvas.height
+      })
+    ) {
+      endGame();
     }
 
-    if (!gameOver) requestAnimationFrame(loop);
+    if (o.x < -obstacleWidth) obstacles.splice(i, 1);
+  }
+
+  // ===== SCORE =====
+  ctx.fillStyle = "#000";
+  ctx.font = "20px Arial";
+  ctx.fillText("Score: " + score, 20, 40);
+
+  // Borders
+  if (cat.y > 600 || cat.y < 0) endGame();
+
+  if (!gameOver) requestAnimationFrame(loop);
+}
+
+// ===== FUNCTIONS =====
+function createObstacle() {
+  let topHeight = Math.random() * 250 + 50;
+  obstacles.push({ x: canvas.width, top: topHeight });
+}
+
+function resetPoint() {
+  point.x = canvas.width;
+  point.y = Math.random() * 500 + 50;
+}
+
+function rectCollision(a, b) {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.size > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.size > b.y
+  );
+}
+
+function checkCollision(cat, point) {
+  return (
+    cat.x < point.x + point.size &&
+    cat.x + cat.size > point.x &&
+    cat.y < point.y + point.size &&
+    cat.y + cat.size > point.y
+  );
+}
+
+function endGame() {
+  if (gameOver) return;
+  gameOver = true;
+  drawGameOver();
+  sendScore();
+}
+
+function drawGameOver() {
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "white";
+  ctx.font = "40px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("GAME OVER", canvas.width / 2, 280);
+
+  ctx.font = "20px Arial";
+  ctx.fillText("Score: " + score, canvas.width / 2, 320);
+  ctx.fillText("Tap to restart", canvas.width / 2, 360);
 }
 
 function sendScore() {
-    if (window.Telegram.WebApp) {
-        Telegram.WebApp.sendData(JSON.stringify({
-            score: score
-        }));
-    }
+  if (tg && !scoreSent) {
+    tg.sendData(JSON.stringify({ score }));
+    scoreSent = true;
+  }
 }
 
 loop();
