@@ -36,6 +36,8 @@ const player = {
 
 let bullets = [];
 let enemies = [];
+let coins = [];
+let score = 0;
 
 /* ================= BUTTONS ================= */
 const buttons = {
@@ -71,6 +73,8 @@ function startGame() {
   player.hp = 3;
   bullets = [];
   enemies = [];
+  coins = [];
+  score = 0;
 }
 
 /* ================= MAIN LOOP ================= */
@@ -97,6 +101,7 @@ function update() {
   updateBullets();
   updateEnemies();
   spawnEnemies();
+  updateCoins();
 }
 
 /* ================= SHOOT ================= */
@@ -142,7 +147,19 @@ function updateEnemies() {
       if (hit(b, e)) {
         bullets.splice(bi, 1);
         e.hp--;
-        if (e.hp <= 0) enemies.splice(ei, 1);
+        if (e.hp <= 0) {
+          // Добавляем монету с вероятностью 70%
+          if (Math.random() < 0.7) {
+            coins.push({
+              x: e.x + e.w / 2 - 8,
+              y: e.y + e.h / 2 - 8,
+              w: 16,
+              h: 16,
+              speed: 3
+            });
+          }
+          enemies.splice(ei, 1);
+        }
       }
     });
 
@@ -154,31 +171,51 @@ function updateEnemies() {
   });
 }
 
+/* ================= COINS ================= */
+function updateCoins() {
+  coins.forEach((c, i) => {
+    c.y += c.speed;
+
+    if (rectHit(player, c)) {
+      coins.splice(i, 1);
+      score += 1;
+    }
+
+    if (c.y > HEIGHT) coins.splice(i, 1);
+  });
+}
+
 /* ================= DRAW ================= */
 function draw() {
+  // Игрок
   ctx.fillStyle = "#00ffff";
   ctx.fillRect(player.x, player.y, player.w, player.h);
 
+  // Пули
   ctx.fillStyle = "yellow";
   bullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 10));
 
+  // Враги
   enemies.forEach(e => {
     ctx.fillStyle = "red";
     ctx.fillRect(e.x, e.y, e.w, e.h);
 
+    // Здоровье врагов
     ctx.fillStyle = "black";
     ctx.fillRect(e.x, e.y - 6, e.w, 4);
     ctx.fillStyle = "lime";
-    ctx.fillRect(
-      e.x,
-      e.y - 6,
-      (e.hp / e.maxHp) * e.w,
-      4
-    );
+    ctx.fillRect(e.x, e.y - 6, (e.hp / e.maxHp) * e.w, 4);
   });
 
+  // Монеты
+  ctx.fillStyle = "gold";
+  coins.forEach(c => ctx.fillRect(c.x, c.y, c.w, c.h));
+
+  // HUD: жизнь и счёт
   ctx.fillStyle = "white";
+  ctx.font = "16px Arial";
   ctx.fillText("❤️ ".repeat(player.hp), 10, 20);
+  ctx.fillText("💰 " + score, WIDTH - 80, 20);
 }
 
 /* ================= MENU ================= */
