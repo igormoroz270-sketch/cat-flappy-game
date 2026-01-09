@@ -17,6 +17,10 @@ canvas.width = WIDTH * DPR;
 canvas.height = HEIGHT * DPR;
 ctx.scale(DPR, DPR);
 
+/* ================= PLAYER IMAGE ================= */
+const playerImg = new Image();
+playerImg.src = "/mnt/data/80e98e5e-cc2d-4184-abbf-15f38a32672cba.png"; // загруженный космический корабль
+
 /* ================= GAME STATE ================= */
 let gameState = "menu";
 let gameOver = false;
@@ -24,13 +28,13 @@ let shopOpen = false;
 
 /* ================= PLAYER ================= */
 const player = {
-  x: WIDTH / 2 - 20,
+  x: WIDTH / 2 - 25,
   y: HEIGHT - 90,
-  w: 40,
-  h: 40,
+  w: 50, // размер под изображение
+  h: 50,
   hp: 3,
   maxHp: 3,
-  targetX: WIDTH / 2 - 20,
+  targetX: WIDTH / 2 - 25,
   speed: 0.15,
   fireRate: 8,
   fireCooldown: 0,
@@ -207,11 +211,6 @@ function drawBullets() {
   bullets.forEach(b => {
     ctx.fillStyle = "yellow";
     ctx.fillRect(b.x, b.y, 4, 10);
-    ctx.strokeStyle = "rgba(255,255,0,0.5)";
-    ctx.beginPath();
-    ctx.moveTo(b.x + 2, b.y + 10);
-    ctx.lineTo(b.x + 2, b.y + 20);
-    ctx.stroke();
   });
 }
 
@@ -315,13 +314,16 @@ function updateExplosions(){explosions.forEach((ex,i)=>{ex.radius+=2;if(ex.radiu
 
 /* ================= DRAW ================= */
 function draw(){
-  ctx.fillStyle="black";
-  ctx.fillRect(0,0,WIDTH,HEIGHT);
+  ctx.fillStyle="black"; ctx.fillRect(0,0,WIDTH,HEIGHT);
   drawStars();
   drawBullets();
 
-  ctx.fillStyle="#00ffff";
-  ctx.fillRect(player.x,player.y,player.w,player.h);
+  // Игрок – космический корабль
+  if(playerImg.complete){
+    ctx.drawImage(playerImg, player.x, player.y, player.w, player.h);
+  } else {
+    ctx.fillStyle="#00ffff"; ctx.fillRect(player.x,player.y,player.w,player.h);
+  }
 
   enemies.forEach(e=>{
     const pulse=Math.sin(Date.now()/100)*2;
