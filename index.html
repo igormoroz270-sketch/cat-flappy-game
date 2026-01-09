@@ -7,81 +7,91 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <style>
-  body {
-    margin: 0;
-    background: black;
-    overflow: hidden;
-    touch-action: none;
-  }
-  canvas {
-    display: block;
-    margin: 0 auto;
-    background: radial-gradient(#000, #020824);
-  }
+body {
+  margin: 0;
+  background: black;
+  overflow: hidden;
+  touch-action: none;
+}
+canvas {
+  display: block;
+  margin: 0 auto;
+  background: radial-gradient(#000, #020824);
+}
+#shop {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,.8);
+  color: white;
+  padding: 10px;
+  border-radius: 10px;
+  font-family: Arial;
+  font-size: 14px;
+}
+button {
+  margin: 4px;
+}
 </style>
 </head>
 <body>
 
 <canvas id="game" width="360" height="640"></canvas>
 
+<div id="shop">
+  <b>SHOP</b><br>
+  <button onclick="buyDamage()">+Damage (100🪙)</button>
+  <button onclick="buyFireRate()">+Fire Rate (150🪙)</button>
+  <button onclick="buyHP()">+HP (200🪙)</button>
+  <hr>
+  <button onclick="buyStars('damage')">⭐ x2 Damage</button>
+  <button onclick="buyStars('fire')">⭐ Turbo Fire</button>
+</div>
+
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-
 const tg = window.Telegram?.WebApp;
 tg?.ready();
 tg?.expand();
 
 // ===== PLAYER =====
 let player = {
-  x: 160,
-  targetX: 160,
-  y: 520,
-  w: 40,
-  h: 40,
-  hp: 5,
-  damage: 1,
-  fireRate: 10, // чем меньше — тем быстрее стрельба
-  fireCooldown: 0,
-  speed: 0.15 // плавность движения
+  x: 160, targetX: 160, y: 520,
+  w: 40, h: 40,
+  hp: 5, damage: 1,
+  fireRate: 10, fireCooldown: 0,
+  speed: 0.15
 };
 
-// ===== GAME STATE =====
-let bullets = [];
-let enemies = [];
-let coins = [];
+// ===== STATE =====
+let bullets = [], enemies = [], coins = [];
 let money = 0;
 let gameOver = false;
 
-// ===== TOUCH CONTROL =====
+// ===== WEEKLY BOSS =====
+const WEEK = 7 * 24 * 60 * 60 * 1000;
+let lastBossKill = localStorage.getItem("boss") || 0;
+let bossAlive = Date.now() - lastBossKill > WEEK;
+
+// ===== INPUT =====
 canvas.addEventListener("touchmove", e => {
   let rect = canvas.getBoundingClientRect();
-  let touchX = e.touches[0].clientX - rect.left;
-  player.targetX = touchX - player.w / 2;
+  player.targetX = e.touches[0].clientX - rect.left - player.w / 2;
 });
 
-canvas.addEventListener("touchstart", e => {
-  let rect = canvas.getBoundingClientRect();
-  let touchX = e.touches[0].clientX - rect.left;
-  player.targetX = touchX - player.w / 2;
-});
-
-// ===== GAME LOOP =====
+// ===== LOOP =====
 function loop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+  ctx.clearRect(0,0,canvas.width,canvas.height);
   update();
   draw();
-
-  if (!gameOver) requestAnimationFrame(loop);
+  requestAnimationFrame(loop);
 }
 
 // ===== UPDATE =====
 function update() {
-  // Smooth movement (LERP)
   player.x += (player.targetX - player.x) * player.speed;
-
-  // Borders
   player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
 
   autoShoot();
@@ -93,165 +103,128 @@ function update() {
 
 // ===== AUTO SHOOT =====
 function autoShoot() {
-  if (player.fireCooldown > 0) {
-    player.fireCooldown--;
-    return;
-  }
-
-  bullets.push({
-    x: player.x + player.w / 2,
-    y: player.y,
-    speed: 8
-  });
-
+  if (player.fireCooldown-- > 0) return;
+  bullets.push({ x: player.x + player.w/2, y: player.y, speed: 8 });
   player.fireCooldown = player.fireRate;
-}
-
-// ===== DRAW =====
-function draw() {
-  drawPlayer();
-  bullets.forEach(drawBullet);
-  enemies.forEach(drawEnemy);
-  coins.forEach(drawCoin);
-
-  ctx.fillStyle = "white";
-  ctx.font = "16px Arial";
-  ctx.fillText("Coins: " + money, 10, 20);
-  ctx.fillText("HP: " + player.hp, 10, 40);
-}
-
-// ===== PLAYER =====
-function drawPlayer() {
-  ctx.fillStyle = "#00ffff";
-  ctx.beginPath();
-  ctx.moveTo(player.x + player.w / 2, player.y);
-  ctx.lineTo(player.x, player.y + player.h);
-  ctx.lineTo(player.x + player.w, player.y + player.h);
-  ctx.closePath();
-  ctx.fill();
-}
-
-// ===== BULLETS =====
-function updateBullets() {
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    bullets[i].y -= bullets[i].speed;
-    if (bullets[i].y < 0) bullets.splice(i, 1);
-  }
-}
-
-function drawBullet(b) {
-  ctx.fillStyle = "yellow";
-  ctx.fillRect(b.x - 2, b.y, 4, 10);
 }
 
 // ===== ENEMIES =====
 function spawnEnemies() {
-  if (Math.random() < 0.02) {
-    let level = Math.ceil(Math.random() * 3);
+  if (bossAlive && !enemies.find(e => e.boss)) {
     enemies.push({
-      x: Math.random() * (canvas.width - 40),
-      y: -40,
-      w: 40,
-      h: 40,
-      hp: level * 2,
-      maxHp: level * 2,
-      level,
-      speed: 1 + level
+      x: 100, y: -80, w: 160, h: 80,
+      hp: 100, maxHp: 100, speed: 0.5,
+      boss: true
+    });
+  } else if (Math.random() < 0.02) {
+    enemies.push({
+      x: Math.random() * 320, y: -40,
+      w: 40, h: 40,
+      hp: 3, maxHp: 3, speed: 2
     });
   }
 }
 
 function updateEnemies() {
-  for (let i = enemies.length - 1; i >= 0; i--) {
-    let e = enemies[i];
+  enemies.forEach((e,i) => {
     e.y += e.speed;
 
-    // Bullet hit
-    for (let j = bullets.length - 1; j >= 0; j--) {
-      if (pointInRect(bullets[j], e)) {
+    bullets.forEach((b,j) => {
+      if (hit(b,e)) {
         e.hp -= player.damage;
-        bullets.splice(j, 1);
-
+        bullets.splice(j,1);
         if (e.hp <= 0) {
-          spawnCoins(e);
-          enemies.splice(i, 1);
-          break;
+          if (e.boss) {
+            money += 1000;
+            bossAlive = false;
+            localStorage.setItem("boss", Date.now());
+          } else spawnCoins(e);
+          enemies.splice(i,1);
         }
       }
-    }
-
-    // Player collision
-    if (rectHit(player, e)) {
-      player.hp--;
-      enemies.splice(i, 1);
-      if (player.hp <= 0) gameOver = true;
-    }
-
-    if (e.y > canvas.height) enemies.splice(i, 1);
-  }
-}
-
-function drawEnemy(e) {
-  ctx.fillStyle = ["#ff5555", "#ff8844", "#ff0000"][e.level - 1];
-  ctx.fillRect(e.x, e.y, e.w, e.h);
-
-  // HP bar
-  ctx.fillStyle = "black";
-  ctx.fillRect(e.x, e.y - 6, e.w, 4);
-  ctx.fillStyle = "lime";
-  ctx.fillRect(e.x, e.y - 6, (e.hp / e.maxHp) * e.w, 4);
+    });
+  });
 }
 
 // ===== COINS =====
-function spawnCoins(enemy) {
-  let amount = enemy.level + 1;
-  for (let i = 0; i < amount; i++) {
-    coins.push({
-      x: enemy.x + enemy.w / 2,
-      y: enemy.y,
-      vy: Math.random() * 2 + 1
-    });
-  }
+function spawnCoins(e) {
+  for (let i=0;i<2;i++)
+    coins.push({ x:e.x+20, y:e.y, vy:2 });
 }
 
 function updateCoins() {
-  for (let i = coins.length - 1; i >= 0; i--) {
-    let c = coins[i];
+  coins.forEach((c,i) => {
     c.y += c.vy;
-
-    if (rectHit(player, { x: c.x, y: c.y, w: 10, h: 10 })) {
+    if (rectHit(player,{x:c.x,y:c.y,w:10,h:10})) {
       money++;
-      coins.splice(i, 1);
+      coins.splice(i,1);
     }
-
-    if (c.y > canvas.height) coins.splice(i, 1);
-  }
+  });
 }
 
-function drawCoin(c) {
-  ctx.fillStyle = "gold";
-  ctx.beginPath();
-  ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
-  ctx.fill();
+// ===== DRAW =====
+function draw() {
+  ctx.fillStyle="#0ff";
+  ctx.fillRect(player.x,player.y,player.w,player.h);
+
+  bullets.forEach(b=>{
+    ctx.fillStyle="yellow";
+    ctx.fillRect(b.x,b.y,4,10);
+  });
+
+  enemies.forEach(e=>{
+    ctx.fillStyle=e.boss?"purple":"red";
+    ctx.fillRect(e.x,e.y,e.w,e.h);
+  });
+
+  coins.forEach(c=>{
+    ctx.fillStyle="gold";
+    ctx.beginPath();
+    ctx.arc(c.x,c.y,5,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle="white";
+  ctx.fillText("Coins: "+money,10,20);
+}
+
+// ===== SHOP (COINS) =====
+function buyDamage() {
+  if (money>=100) { money-=100; player.damage++; }
+}
+function buyFireRate() {
+  if (money>=150 && player.fireRate>3) {
+    money-=150; player.fireRate--;
+  }
+}
+function buyHP() {
+  if (money>=200) { money-=200; player.hp++; }
+}
+
+// ===== STARS SHOP =====
+function buyStars(type) {
+  if (!tg?.openInvoice) {
+    alert("Stars available only in Telegram");
+    return;
+  }
+
+  tg.openInvoice({
+    slug: "upgrade_"+type,
+    callback: status => {
+      if (status === "paid") {
+        if (type==="damage") player.damage*=2;
+        if (type==="fire") player.fireRate=3;
+      }
+    }
+  });
 }
 
 // ===== COLLISION =====
-function pointInRect(p, r) {
-  return (
-    p.x > r.x &&
-    p.x < r.x + r.w &&
-    p.y > r.y &&
-    p.y < r.y + r.h
-  );
+function hit(b,e){
+  return b.x>e.x&&b.x<e.x+e.w&&b.y>e.y&&b.y<e.y+e.h;
 }
-
-function rectHit(a, b) {
-  return (
-    a.x < b.x + b.w &&
-    a.x + a.w > b.x &&
-    a.y < b.y + b.h &&
-    a.y + a.h > b.y
-  );
+function rectHit(a,b){
+  return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 }
 
 loop();
