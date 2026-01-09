@@ -39,3 +39,9 @@ canvas {
 
 </body>
 </html>
+/* ================= PLAYER IMAGE ================= */
+const playerImg = new Image();
+playerImg.src = "player.png"; // файл player.png в той же папке
+let playerImgLoaded = false;
+playerImg.onload = () => { playerImgLoaded = true; };
+playerImg.onerror = () => { console.error("Ошибка загрузки player.png"); };
