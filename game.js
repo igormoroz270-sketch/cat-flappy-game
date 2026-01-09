@@ -19,7 +19,9 @@ ctx.scale(DPR, DPR);
 
 /* ================= PLAYER IMAGE ================= */
 const playerImg = new Image();
-playerImg.src = "/mnt/data/80e98e5e-cc2d-4184-abbf-15f38a32672cba.png"; // загруженный космический корабль
+playerImg.src = "/mnt/data/80e98e5e-cc2d-4184-abbf-15f38a32672cba.png";
+let playerImgLoaded = false;
+playerImg.onload = () => { playerImgLoaded = true };
 
 /* ================= GAME STATE ================= */
 let gameState = "menu";
@@ -30,7 +32,7 @@ let shopOpen = false;
 const player = {
   x: WIDTH / 2 - 25,
   y: HEIGHT - 90,
-  w: 50, // размер под изображение
+  w: 50,
   h: 50,
   hp: 3,
   maxHp: 3,
@@ -318,8 +320,7 @@ function draw(){
   drawStars();
   drawBullets();
 
-  // Игрок – космический корабль
-  if(playerImg.complete){
+  if(playerImgLoaded){
     ctx.drawImage(playerImg, player.x, player.y, player.w, player.h);
   } else {
     ctx.fillStyle="#00ffff"; ctx.fillRect(player.x,player.y,player.w,player.h);
@@ -341,8 +342,16 @@ function draw(){
   }
 
   ctx.fillStyle="gold"; coins.forEach(c=>ctx.fillRect(c.x,c.y,c.w,c.h));
-  powerUps.forEach(p=>{ctx.fillStyle=p.type==="hp"?"pink":p.type==="invincible"?"cyan":"orange";ctx.fillRect(p.x,p.y,20,20);});
-  explosions.forEach(ex=>{ctx.beginPath();ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2);ctx.fillStyle=`rgba(255,165,0,${1-ex.radius/ex.maxRadius})`;ctx.fill();});
+  powerUps.forEach(p=>{
+    ctx.fillStyle=p.type==="hp"?"pink":p.type==="invincible"?"cyan":"orange";
+    ctx.fillRect(p.x,p.y,20,20);
+  });
+  explosions.forEach(ex=>{
+    ctx.beginPath();
+    ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,165,0,${1-ex.radius/ex.maxRadius})`;
+    ctx.fill();
+  });
 
   ctx.fillStyle="white"; ctx.font="16px Arial";
   const shake=player.tookDamage?2:0;
@@ -353,33 +362,71 @@ function draw(){
 /* ================= MENU ================= */
 function drawMenu(){
   ctx.fillStyle="black";ctx.fillRect(0,0,WIDTH,HEIGHT);
-  ctx.fillStyle="white";ctx.font="28px Arial";ctx.fillText("🚀 Space Shooter",70,200);
-  drawButton(buttons.play,"▶ ИГРАТЬ"); drawButton(buttons.shop,"🛒 МАГАЗИН");
+  ctx.fillStyle="white";ctx.font="28px Arial";ctx.textAlign="center";
+  ctx.fillText("🚀 Space Shooter",WIDTH/2,200);
+  drawButton(buttons.play,"▶ ИГРАТЬ");
+  drawButton(buttons.shop,"🛒 МАГАЗИН");
   if(shopOpen) drawShop();
 }
-function drawButton(b,text){ctx.fillStyle="#222";ctx.fillRect(b.x,b.y,b.w,b.h);ctx.strokeStyle="white";ctx.strokeRect(b.x,b.y,b.w,b.h);ctx.fillStyle="white";ctx.font="20px Arial";ctx.fillText(text,b.x+20,b.y+32);}
+
+function drawButton(b,text){
+  ctx.fillStyle="#222";ctx.fillRect(b.x,b.y,b.w,b.h);
+  ctx.strokeStyle="white";ctx.strokeRect(b.x,b.y,b.w,b.h);
+  ctx.fillStyle="white";ctx.font="20px Arial";ctx.textAlign="left";
+  ctx.fillText(text,b.x+20,b.y+32);
+}
 
 /* ================= SHOP ================= */
 function drawShop(){
-  ctx.fillStyle="rgba(0,0,0,0.9)"; ctx.fillRect(20,100,320,440);
-  ctx.fillStyle="white"; ctx.font="24px Arial"; ctx.fillText("МАГАЗИН",120,140);
-  let y=180;
-  for(let key in upgrades){const upg=upgrades[key];ctx.fillText(`${key.toUpperCase()} LVL ${upg.level} - ${upg.price}💰`,50,y); drawButton({x:50,y:y-20,w:200,h:30},"Купить"); y+=40;}
-  ctx.fillText("⭐ DONATE UPGRADES",50,y+20); ctx.fillText("Супер-Пушка за 5⭐",50,y+60);
+  ctx.fillStyle="rgba(0,0,0,0.95)";
+  ctx.fillRect(20, 100, 320, 440);
+  ctx.fillStyle="white"; ctx.font="28px Arial"; ctx.textAlign="center";
+  ctx.fillText("МАГАЗИН", WIDTH/2, 140);
+
+  let startY = 180;
+  ctx.font = "20px Arial"; ctx.textAlign="left";
+  let index = 0;
+  for(let key in upgrades){
+    const upg = upgrades[key];
+    const active = savedCoins >= upg.price && upg.level < upg.max;
+    ctx.fillStyle = active ? "white" : "gray";
+    ctx.fillText(`${key.toUpperCase()} LVL ${upg.level} - ${upg.price}💰`, 50, startY + index*60);
+    drawShopButton(200, startY + index*60 - 25, 90, 30, "Купить", index, active);
+    index++;
+  }
+
+  ctx.fillStyle="white";
+  ctx.fillText("⭐ DONATE UPGRADES", 50, startY + index*60 + 20);
+  ctx.fillText("Супер-Пушка за 5⭐", 50, startY + index*60 + 60);
   drawButton(buttons.back,"⬅ НАЗАД");
 }
-function handleShopClick(x,y){
-  let yPos=180;
+
+function drawShopButton(x, y, w, h, text, id, active){
+  ctx.fillStyle = active ? "#222" : "#555";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = "white"; ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = active ? "white" : "gray";
+  ctx.font = "16px Arial"; ctx.textAlign = "center";
+  ctx.fillText(text, x + w/2, y + 20);
+}
+
+function handleShopClick(x, y){
+  let startY = 180;
+  let index = 0;
   for(let key in upgrades){
-    const upg=upgrades[key];
-    if(hitBtn(x,y,{x:50,y:yPos-20,w:200,h:30}) && savedCoins>=upg.price && upg.level<upg.max){
-      savedCoins-=upg.price; localStorage.setItem("coins",savedCoins); upg.level++;
-      if(key==="fireRate") player.fireRate=Math.max(2,player.fireRate-1);
-      if(key==="hp") player.maxHp++;
+    const upg = upgrades[key];
+    const btnX = 200; const btnY = startY + index*60 - 25;
+    const btnW = 90; const btnH = 30;
+    if(hitBtn(x, y, {x:btnX, y:btnY, w:btnW, h:btnH}) && savedCoins >= upg.price && upg.level < upg.max){
+      savedCoins -= upg.price;
+      localStorage.setItem("coins", savedCoins);
+      upg.level++;
+      if(key === "fireRate") player.fireRate = Math.max(2, player.fireRate - 1);
+      if(key === "hp") player.maxHp++;
     }
-    yPos+=40;
+    index++;
   }
-  if(hitBtn(x,y,buttons.back)) shopOpen=false;
+  if(hitBtn(x, y, buttons.back)) shopOpen=false;
 }
 
 /* ================= GAME OVER ================= */
@@ -392,7 +439,7 @@ function drawGameOver(){
 /* ================= HELPERS ================= */
 function hit(b,e){return b.x>e.x&&b.x<e.x+e.w&&b.y>e.y&&b.y<e.y+e.h;}
 function rectHit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
-function hitBtn(x,y,b){return x>b.x&&x<b.x+b.w&&y>b.y&&y<b.y+b.h;}
+function hitBtn(x,y,b){return x>b.x&&x<b.x+b.w&&y>b.y&&y<b.h+b.h;}
 
 /* ================= START ================= */
 loop();
