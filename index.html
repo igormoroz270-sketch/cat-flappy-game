@@ -11,7 +11,7 @@
     margin: 0;
     background: black;
     overflow: hidden;
-    touch-action: manipulation;
+    touch-action: none;
   }
   canvas {
     display: block;
@@ -35,31 +35,40 @@ tg?.expand();
 // ===== PLAYER =====
 let player = {
   x: 160,
+  targetX: 160,
   y: 520,
   w: 40,
   h: 40,
   hp: 5,
   damage: 1,
-  fireRate: 15,
-  fireCooldown: 0
+  fireRate: 10, // чем меньше — тем быстрее стрельба
+  fireCooldown: 0,
+  speed: 0.15 // плавность движения
 };
 
 // ===== GAME STATE =====
 let bullets = [];
 let enemies = [];
 let coins = [];
-let score = 0;
 let money = 0;
 let gameOver = false;
 
-// ===== INPUT =====
-canvas.addEventListener("click", (e) => {
-  shoot();
+// ===== TOUCH CONTROL =====
+canvas.addEventListener("touchmove", e => {
+  let rect = canvas.getBoundingClientRect();
+  let touchX = e.touches[0].clientX - rect.left;
+  player.targetX = touchX - player.w / 2;
+});
+
+canvas.addEventListener("touchstart", e => {
+  let rect = canvas.getBoundingClientRect();
+  let touchX = e.touches[0].clientX - rect.left;
+  player.targetX = touchX - player.w / 2;
 });
 
 // ===== GAME LOOP =====
 function loop() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   update();
   draw();
@@ -69,12 +78,33 @@ function loop() {
 
 // ===== UPDATE =====
 function update() {
-  if (player.fireCooldown > 0) player.fireCooldown--;
+  // Smooth movement (LERP)
+  player.x += (player.targetX - player.x) * player.speed;
 
+  // Borders
+  player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+
+  autoShoot();
   updateBullets();
   updateEnemies();
   updateCoins();
   spawnEnemies();
+}
+
+// ===== AUTO SHOOT =====
+function autoShoot() {
+  if (player.fireCooldown > 0) {
+    player.fireCooldown--;
+    return;
+  }
+
+  bullets.push({
+    x: player.x + player.w / 2,
+    y: player.y,
+    speed: 8
+  });
+
+  player.fireCooldown = player.fireRate;
 }
 
 // ===== DRAW =====
@@ -84,7 +114,6 @@ function draw() {
   enemies.forEach(drawEnemy);
   coins.forEach(drawCoin);
 
-  // UI
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
   ctx.fillText("Coins: " + money, 10, 20);
@@ -95,23 +124,11 @@ function draw() {
 function drawPlayer() {
   ctx.fillStyle = "#00ffff";
   ctx.beginPath();
-  ctx.moveTo(player.x + 20, player.y);
-  ctx.lineTo(player.x, player.y + 40);
-  ctx.lineTo(player.x + 40, player.y + 40);
+  ctx.moveTo(player.x + player.w / 2, player.y);
+  ctx.lineTo(player.x, player.y + player.h);
+  ctx.lineTo(player.x + player.w, player.y + player.h);
   ctx.closePath();
   ctx.fill();
-}
-
-function shoot() {
-  if (player.fireCooldown > 0) return;
-
-  bullets.push({
-    x: player.x + 20,
-    y: player.y,
-    speed: 8
-  });
-
-  player.fireCooldown = player.fireRate;
 }
 
 // ===== BULLETS =====
@@ -132,11 +149,12 @@ function spawnEnemies() {
   if (Math.random() < 0.02) {
     let level = Math.ceil(Math.random() * 3);
     enemies.push({
-      x: Math.random() * 320,
+      x: Math.random() * (canvas.width - 40),
       y: -40,
       w: 40,
       h: 40,
       hp: level * 2,
+      maxHp: level * 2,
       level,
       speed: 1 + level
     });
@@ -148,11 +166,12 @@ function updateEnemies() {
     let e = enemies[i];
     e.y += e.speed;
 
-    // Bullet collision
+    // Bullet hit
     for (let j = bullets.length - 1; j >= 0; j--) {
-      if (hit(bullets[j], e)) {
+      if (pointInRect(bullets[j], e)) {
         e.hp -= player.damage;
         bullets.splice(j, 1);
+
         if (e.hp <= 0) {
           spawnCoins(e);
           enemies.splice(i, 1);
@@ -173,14 +192,14 @@ function updateEnemies() {
 }
 
 function drawEnemy(e) {
-  ctx.fillStyle = ["#ff4444", "#ff8844", "#ff0000"][e.level - 1];
+  ctx.fillStyle = ["#ff5555", "#ff8844", "#ff0000"][e.level - 1];
   ctx.fillRect(e.x, e.y, e.w, e.h);
 
   // HP bar
   ctx.fillStyle = "black";
   ctx.fillRect(e.x, e.y - 6, e.w, 4);
   ctx.fillStyle = "lime";
-  ctx.fillRect(e.x, e.y - 6, (e.hp / (e.level * 2)) * e.w, 4);
+  ctx.fillRect(e.x, e.y - 6, (e.hp / e.maxHp) * e.w, 4);
 }
 
 // ===== COINS =====
@@ -188,7 +207,7 @@ function spawnCoins(enemy) {
   let amount = enemy.level + 1;
   for (let i = 0; i < amount; i++) {
     coins.push({
-      x: enemy.x + 20,
+      x: enemy.x + enemy.w / 2,
       y: enemy.y,
       vy: Math.random() * 2 + 1
     });
@@ -217,12 +236,12 @@ function drawCoin(c) {
 }
 
 // ===== COLLISION =====
-function hit(b, e) {
+function pointInRect(p, r) {
   return (
-    b.x > e.x &&
-    b.x < e.x + e.w &&
-    b.y > e.y &&
-    b.y < e.y + e.h
+    p.x > r.x &&
+    p.x < r.x + r.w &&
+    p.y > r.y &&
+    p.y < r.y + r.h
   );
 }
 
