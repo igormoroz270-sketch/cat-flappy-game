@@ -12,16 +12,6 @@ canvas.width = WIDTH * DPR;
 canvas.height = HEIGHT * DPR;
 ctx.scale(DPR, DPR);
 
-/* ================= PLAYER IMAGE ================= */
-const playerImg = new Image();
-playerImg.src = "ship.png"; // <-- путь к твоей картинке, убедись, что файл рядом с HTML
-let playerImgLoaded = false;
-playerImg.onload = () => { 
-  playerImgLoaded = true; 
-  console.log("Картинка игрока загружена!"); 
-};
-playerImg.onerror = () => { console.error("Не удалось загрузить картинку!"); };
-
 /* ================= GAME STATE ================= */
 let gameState = "menu";
 let gameOver = false;
@@ -41,6 +31,12 @@ const player = {
   fireCooldown: 0,
   tookDamage: false
 };
+
+/* ================= PLAYER IMAGE ================= */
+const playerImg = new Image();
+playerImg.src = "player.png"; // файл с твоим космическим кораблем
+let playerImgLoaded = false;
+playerImg.onload = () => { playerImgLoaded = true; };
 
 /* ================= ARRAYS ================= */
 let bullets = [];
@@ -346,8 +342,13 @@ function drawGame(){
   ctx.fillStyle="black"; ctx.fillRect(0,0,WIDTH,HEIGHT);
   drawStars();
   bullets.forEach(b=>{ctx.fillStyle="yellow";ctx.fillRect(b.x,b.y,b.w,b.h);});
-  if(playerImgLoaded) ctx.drawImage(playerImg,player.x,player.y,player.w,player.h);
-  else ctx.fillStyle="#00ffff",ctx.fillRect(player.x,player.y,player.w,player.h);
+
+  // Игрок — картинка
+  if(playerImgLoaded){
+    ctx.drawImage(playerImg, player.x, player.y, player.w, player.h);
+  } else {
+    ctx.fillStyle="#00ffff"; ctx.fillRect(player.x,player.y,player.w,player.h);
+  }
 
   enemies.forEach(e=>{ const pulse=Math.sin(Date.now()/100)*2; ctx.fillStyle="red"; ctx.fillRect(e.x-pulse/2,e.y-pulse/2,e.w+pulse,e.h+pulse); ctx.fillStyle="black"; ctx.fillRect(e.x,e.y-6,e.w,4); ctx.fillStyle="lime"; ctx.fillRect(e.x,e.y-6,(e.hp/e.maxHp)*e.w,4); });
   if(boss){ ctx.fillStyle="purple"; ctx.fillRect(boss.x,boss.y,boss.w,boss.h); ctx.fillStyle="black"; ctx.fillRect(boss.x,boss.y-6,boss.w,4); ctx.fillStyle="lime"; ctx.fillRect(boss.x,boss.y-6,(boss.hp/boss.maxHp)*boss.w,4);}
