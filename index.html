@@ -32,7 +32,7 @@ const tg = window.Telegram?.WebApp;
 tg?.ready();
 tg?.expand();
 
-// ===== GAME STATE =====
+// ===== PLAYER =====
 let cat = {
   x: 80,
   y: 300,
@@ -42,9 +42,19 @@ let cat = {
 
 let gravity = 0.6;
 let jump = -10;
+
+// ===== GAME STATE =====
 let score = 0;
+let lives = 3;
 let gameOver = false;
 let scoreSent = false;
+
+// ===== BOOST STATES =====
+let shieldActive = false;
+let shieldTimer = 0;
+
+let x2Active = false;
+let x2Timer = 0;
 
 // ===== POINT =====
 let point = {
@@ -54,20 +64,22 @@ let point = {
   speed: 3
 };
 
+// ===== BOOST ITEMS =====
+let shieldItem = null;
+let x2Item = null;
+
 // ===== OBSTACLES =====
 let obstacles = [];
 let obstacleTimer = 0;
+
 const obstacleGap = 150;
 const obstacleWidth = 50;
 const obstacleSpeed = 3;
 
 // ===== INPUT =====
 document.addEventListener("click", () => {
-  if (!gameOver) {
-    cat.vel = jump;
-  } else {
-    location.reload();
-  }
+  if (!gameOver) cat.vel = jump;
+  else location.reload();
 });
 
 // ===== GAME LOOP =====
@@ -82,19 +94,41 @@ function loop() {
   ctx.fillStyle = "orange";
   ctx.fillRect(cat.x, cat.y, cat.size, cat.size);
 
+  // Shield effect
+  if (shieldActive) {
+    ctx.strokeStyle = "cyan";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(cat.x - 4, cat.y - 4, cat.size + 8, cat.size + 8);
+    shieldTimer--;
+    if (shieldTimer <= 0) shieldActive = false;
+  }
+
+  // x2 timer
+  if (x2Active) {
+    x2Timer--;
+    if (x2Timer <= 0) x2Active = false;
+  }
+
   // ===== POINT =====
   point.x -= point.speed;
-  ctx.fillStyle = "gold";
-  ctx.beginPath();
-  ctx.arc(point.x, point.y, point.size / 2, 0, Math.PI * 2);
-  ctx.fill();
+  drawCircle(point.x, point.y, point.size / 2, "gold");
 
   if (point.x < -20) resetPoint();
 
-  if (checkCollision(cat, point)) {
-    score++;
+  if (rectHit(cat, point)) {
+    score += x2Active ? 2 : 1;
     resetPoint();
   }
+
+  // ===== BOOST SPAWN =====
+  spawnBoosts();
+
+  // Draw boosts
+  drawBoost(shieldItem, "cyan");
+  drawBoost(x2Item, "purple");
+
+  // Collect boosts
+  collectBoosts();
 
   // ===== OBSTACLES =====
   obstacleTimer++;
@@ -107,19 +141,10 @@ function loop() {
     let o = obstacles[i];
     o.x -= obstacleSpeed;
 
-    // Draw top
     ctx.fillStyle = "#228B22";
     ctx.fillRect(o.x, 0, obstacleWidth, o.top);
+    ctx.fillRect(o.x, o.top + obstacleGap, obstacleWidth, canvas.height);
 
-    // Draw bottom
-    ctx.fillRect(
-      o.x,
-      o.top + obstacleGap,
-      obstacleWidth,
-      canvas.height
-    );
-
-    // Collision
     if (
       rectCollision(cat, { x: o.x, y: 0, w: obstacleWidth, h: o.top }) ||
       rectCollision(cat, {
@@ -129,24 +154,78 @@ function loop() {
         h: canvas.height
       })
     ) {
-      endGame();
+      hitObstacle();
     }
 
     if (o.x < -obstacleWidth) obstacles.splice(i, 1);
   }
 
-  // ===== SCORE =====
+  // ===== UI =====
   ctx.fillStyle = "#000";
   ctx.font = "20px Arial";
   ctx.fillText("Score: " + score, 20, 40);
+  ctx.fillText("Lives: " + lives, 20, 70);
+
+  if (x2Active) ctx.fillText("x2 ACTIVE", 240, 40);
+  if (shieldActive) ctx.fillText("SHIELD", 240, 70);
 
   // Borders
-  if (cat.y > 600 || cat.y < 0) endGame();
+  if (cat.y > 600 || cat.y < 0) hitObstacle();
 
   if (!gameOver) requestAnimationFrame(loop);
 }
 
 // ===== FUNCTIONS =====
+function hitObstacle() {
+  if (shieldActive) return;
+
+  lives--;
+  shieldActive = true;
+  shieldTimer = 60; // short invulnerability after hit
+  cat.vel = -8;
+
+  if (lives <= 0) endGame();
+}
+
+function spawnBoosts() {
+  if (!shieldItem && Math.random() < 0.003) {
+    shieldItem = createBoost();
+  }
+  if (!x2Item && Math.random() < 0.003) {
+    x2Item = createBoost();
+  }
+}
+
+function createBoost() {
+  return {
+    x: canvas.width,
+    y: Math.random() * 500 + 50,
+    size: 20,
+    speed: 3
+  };
+}
+
+function drawBoost(boost, color) {
+  if (!boost) return;
+  boost.x -= boost.speed;
+  drawCircle(boost.x, boost.y, boost.size / 2, color);
+  if (boost.x < -20) boost = null;
+}
+
+function collectBoosts() {
+  if (shieldItem && rectHit(cat, shieldItem)) {
+    shieldActive = true;
+    shieldTimer = 180; // 3 seconds
+    shieldItem = null;
+  }
+
+  if (x2Item && rectHit(cat, x2Item)) {
+    x2Active = true;
+    x2Timer = 300; // 5 seconds
+    x2Item = null;
+  }
+}
+
 function createObstacle() {
   let topHeight = Math.random() * 250 + 50;
   obstacles.push({ x: canvas.width, top: topHeight });
@@ -166,17 +245,23 @@ function rectCollision(a, b) {
   );
 }
 
-function checkCollision(cat, point) {
+function rectHit(a, b) {
   return (
-    cat.x < point.x + point.size &&
-    cat.x + cat.size > point.x &&
-    cat.y < point.y + point.size &&
-    cat.y + cat.size > point.y
+    a.x < b.x + b.size &&
+    a.x + a.size > b.x &&
+    a.y < b.y + b.size &&
+    a.y + a.size > b.y
   );
 }
 
+function drawCircle(x, y, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function endGame() {
-  if (gameOver) return;
   gameOver = true;
   drawGameOver();
   sendScore();
