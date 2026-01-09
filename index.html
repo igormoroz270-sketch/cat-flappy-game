@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Cat Flappy Runner</title>
+<style>
+  body { margin:0; background:#87ceeb; overflow:hidden; }
+  canvas { display:block; margin:0 auto; background:#87ceeb; }
+</style>
+</head>
+<body>
+
+<canvas id="game" width="360" height="640"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let catY = 300;
+let vel = 0;
+let gravity = 0.6;
+let jump = -10;
+let score = 0;
+let gameOver = false;
+
+document.addEventListener("click", () => {
+    if (!gameOver) vel = jump;
+    else location.reload();
+});
+
+function loop() {
+    ctx.clearRect(0,0,360,640);
+
+    vel += gravity;
+    catY += vel;
+
+    ctx.fillStyle = "orange";
+    ctx.fillRect(80, catY, 40, 40);
+
+    ctx.fillStyle = "black";
+    ctx.fillText("Score: " + score, 20, 40);
+
+    if (catY > 600 || catY < 0) {
+        gameOver = true;
+        sendScore();
+    }
+
+    if (!gameOver) requestAnimationFrame(loop);
+}
+
+function sendScore() {
+    if (window.Telegram.WebApp) {
+        Telegram.WebApp.sendData(JSON.stringify({
+            score: score
+        }));
+    }
+}
+
+loop();
+</script>
+
+</body>
+</html>
