@@ -2,21 +2,21 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Cat Flappy Runner</title>
+<title>Space Shooter</title>
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <style>
   body {
     margin: 0;
-    background: #87ceeb;
+    background: black;
     overflow: hidden;
     touch-action: manipulation;
   }
   canvas {
     display: block;
     margin: 0 auto;
-    background: #87ceeb;
+    background: radial-gradient(#000, #020824);
   }
 </style>
 </head>
@@ -33,259 +33,206 @@ tg?.ready();
 tg?.expand();
 
 // ===== PLAYER =====
-let cat = {
-  x: 80,
-  y: 300,
-  size: 40,
-  vel: 0
+let player = {
+  x: 160,
+  y: 520,
+  w: 40,
+  h: 40,
+  hp: 5,
+  damage: 1,
+  fireRate: 15,
+  fireCooldown: 0
 };
-
-let gravity = 0.6;
-let jump = -10;
 
 // ===== GAME STATE =====
+let bullets = [];
+let enemies = [];
+let coins = [];
 let score = 0;
-let lives = 3;
+let money = 0;
 let gameOver = false;
-let scoreSent = false;
-
-// ===== BOOST STATES =====
-let shieldActive = false;
-let shieldTimer = 0;
-
-let x2Active = false;
-let x2Timer = 0;
-
-// ===== POINT =====
-let point = {
-  x: 360,
-  y: Math.random() * 500 + 50,
-  size: 20,
-  speed: 3
-};
-
-// ===== BOOST ITEMS =====
-let shieldItem = null;
-let x2Item = null;
-
-// ===== OBSTACLES =====
-let obstacles = [];
-let obstacleTimer = 0;
-
-const obstacleGap = 150;
-const obstacleWidth = 50;
-const obstacleSpeed = 3;
 
 // ===== INPUT =====
-document.addEventListener("click", () => {
-  if (!gameOver) cat.vel = jump;
-  else location.reload();
+canvas.addEventListener("click", (e) => {
+  shoot();
 });
 
 // ===== GAME LOOP =====
 function loop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // Physics
-  cat.vel += gravity;
-  cat.y += cat.vel;
-
-  // Draw cat
-  ctx.fillStyle = "orange";
-  ctx.fillRect(cat.x, cat.y, cat.size, cat.size);
-
-  // Shield effect
-  if (shieldActive) {
-    ctx.strokeStyle = "cyan";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(cat.x - 4, cat.y - 4, cat.size + 8, cat.size + 8);
-    shieldTimer--;
-    if (shieldTimer <= 0) shieldActive = false;
-  }
-
-  // x2 timer
-  if (x2Active) {
-    x2Timer--;
-    if (x2Timer <= 0) x2Active = false;
-  }
-
-  // ===== POINT =====
-  point.x -= point.speed;
-  drawCircle(point.x, point.y, point.size / 2, "gold");
-
-  if (point.x < -20) resetPoint();
-
-  if (rectHit(cat, point)) {
-    score += x2Active ? 2 : 1;
-    resetPoint();
-  }
-
-  // ===== BOOST SPAWN =====
-  spawnBoosts();
-
-  // Draw boosts
-  drawBoost(shieldItem, "cyan");
-  drawBoost(x2Item, "purple");
-
-  // Collect boosts
-  collectBoosts();
-
-  // ===== OBSTACLES =====
-  obstacleTimer++;
-  if (obstacleTimer > 120) {
-    createObstacle();
-    obstacleTimer = 0;
-  }
-
-  for (let i = obstacles.length - 1; i >= 0; i--) {
-    let o = obstacles[i];
-    o.x -= obstacleSpeed;
-
-    ctx.fillStyle = "#228B22";
-    ctx.fillRect(o.x, 0, obstacleWidth, o.top);
-    ctx.fillRect(o.x, o.top + obstacleGap, obstacleWidth, canvas.height);
-
-    if (
-      rectCollision(cat, { x: o.x, y: 0, w: obstacleWidth, h: o.top }) ||
-      rectCollision(cat, {
-        x: o.x,
-        y: o.top + obstacleGap,
-        w: obstacleWidth,
-        h: canvas.height
-      })
-    ) {
-      hitObstacle();
-    }
-
-    if (o.x < -obstacleWidth) obstacles.splice(i, 1);
-  }
-
-  // ===== UI =====
-  ctx.fillStyle = "#000";
-  ctx.font = "20px Arial";
-  ctx.fillText("Score: " + score, 20, 40);
-  ctx.fillText("Lives: " + lives, 20, 70);
-
-  if (x2Active) ctx.fillText("x2 ACTIVE", 240, 40);
-  if (shieldActive) ctx.fillText("SHIELD", 240, 70);
-
-  // Borders
-  if (cat.y > 600 || cat.y < 0) hitObstacle();
+  update();
+  draw();
 
   if (!gameOver) requestAnimationFrame(loop);
 }
 
-// ===== FUNCTIONS =====
-function hitObstacle() {
-  if (shieldActive) return;
+// ===== UPDATE =====
+function update() {
+  if (player.fireCooldown > 0) player.fireCooldown--;
 
-  lives--;
-  shieldActive = true;
-  shieldTimer = 60; // short invulnerability after hit
-  cat.vel = -8;
-
-  if (lives <= 0) endGame();
+  updateBullets();
+  updateEnemies();
+  updateCoins();
+  spawnEnemies();
 }
 
-function spawnBoosts() {
-  if (!shieldItem && Math.random() < 0.003) {
-    shieldItem = createBoost();
+// ===== DRAW =====
+function draw() {
+  drawPlayer();
+  bullets.forEach(drawBullet);
+  enemies.forEach(drawEnemy);
+  coins.forEach(drawCoin);
+
+  // UI
+  ctx.fillStyle = "white";
+  ctx.font = "16px Arial";
+  ctx.fillText("Coins: " + money, 10, 20);
+  ctx.fillText("HP: " + player.hp, 10, 40);
+}
+
+// ===== PLAYER =====
+function drawPlayer() {
+  ctx.fillStyle = "#00ffff";
+  ctx.beginPath();
+  ctx.moveTo(player.x + 20, player.y);
+  ctx.lineTo(player.x, player.y + 40);
+  ctx.lineTo(player.x + 40, player.y + 40);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function shoot() {
+  if (player.fireCooldown > 0) return;
+
+  bullets.push({
+    x: player.x + 20,
+    y: player.y,
+    speed: 8
+  });
+
+  player.fireCooldown = player.fireRate;
+}
+
+// ===== BULLETS =====
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    bullets[i].y -= bullets[i].speed;
+    if (bullets[i].y < 0) bullets.splice(i, 1);
   }
-  if (!x2Item && Math.random() < 0.003) {
-    x2Item = createBoost();
+}
+
+function drawBullet(b) {
+  ctx.fillStyle = "yellow";
+  ctx.fillRect(b.x - 2, b.y, 4, 10);
+}
+
+// ===== ENEMIES =====
+function spawnEnemies() {
+  if (Math.random() < 0.02) {
+    let level = Math.ceil(Math.random() * 3);
+    enemies.push({
+      x: Math.random() * 320,
+      y: -40,
+      w: 40,
+      h: 40,
+      hp: level * 2,
+      level,
+      speed: 1 + level
+    });
   }
 }
 
-function createBoost() {
-  return {
-    x: canvas.width,
-    y: Math.random() * 500 + 50,
-    size: 20,
-    speed: 3
-  };
-}
+function updateEnemies() {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    let e = enemies[i];
+    e.y += e.speed;
 
-function drawBoost(boost, color) {
-  if (!boost) return;
-  boost.x -= boost.speed;
-  drawCircle(boost.x, boost.y, boost.size / 2, color);
-  if (boost.x < -20) boost = null;
-}
+    // Bullet collision
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      if (hit(bullets[j], e)) {
+        e.hp -= player.damage;
+        bullets.splice(j, 1);
+        if (e.hp <= 0) {
+          spawnCoins(e);
+          enemies.splice(i, 1);
+          break;
+        }
+      }
+    }
 
-function collectBoosts() {
-  if (shieldItem && rectHit(cat, shieldItem)) {
-    shieldActive = true;
-    shieldTimer = 180; // 3 seconds
-    shieldItem = null;
+    // Player collision
+    if (rectHit(player, e)) {
+      player.hp--;
+      enemies.splice(i, 1);
+      if (player.hp <= 0) gameOver = true;
+    }
+
+    if (e.y > canvas.height) enemies.splice(i, 1);
   }
+}
 
-  if (x2Item && rectHit(cat, x2Item)) {
-    x2Active = true;
-    x2Timer = 300; // 5 seconds
-    x2Item = null;
+function drawEnemy(e) {
+  ctx.fillStyle = ["#ff4444", "#ff8844", "#ff0000"][e.level - 1];
+  ctx.fillRect(e.x, e.y, e.w, e.h);
+
+  // HP bar
+  ctx.fillStyle = "black";
+  ctx.fillRect(e.x, e.y - 6, e.w, 4);
+  ctx.fillStyle = "lime";
+  ctx.fillRect(e.x, e.y - 6, (e.hp / (e.level * 2)) * e.w, 4);
+}
+
+// ===== COINS =====
+function spawnCoins(enemy) {
+  let amount = enemy.level + 1;
+  for (let i = 0; i < amount; i++) {
+    coins.push({
+      x: enemy.x + 20,
+      y: enemy.y,
+      vy: Math.random() * 2 + 1
+    });
   }
 }
 
-function createObstacle() {
-  let topHeight = Math.random() * 250 + 50;
-  obstacles.push({ x: canvas.width, top: topHeight });
+function updateCoins() {
+  for (let i = coins.length - 1; i >= 0; i--) {
+    let c = coins[i];
+    c.y += c.vy;
+
+    if (rectHit(player, { x: c.x, y: c.y, w: 10, h: 10 })) {
+      money++;
+      coins.splice(i, 1);
+    }
+
+    if (c.y > canvas.height) coins.splice(i, 1);
+  }
 }
 
-function resetPoint() {
-  point.x = canvas.width;
-  point.y = Math.random() * 500 + 50;
+function drawCoin(c) {
+  ctx.fillStyle = "gold";
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
+  ctx.fill();
 }
 
-function rectCollision(a, b) {
+// ===== COLLISION =====
+function hit(b, e) {
   return (
-    a.x < b.x + b.w &&
-    a.x + a.size > b.x &&
-    a.y < b.y + b.h &&
-    a.y + a.size > b.y
+    b.x > e.x &&
+    b.x < e.x + e.w &&
+    b.y > e.y &&
+    b.y < e.y + e.h
   );
 }
 
 function rectHit(a, b) {
   return (
-    a.x < b.x + b.size &&
-    a.x + a.size > b.x &&
-    a.y < b.y + b.size &&
-    a.y + a.size > b.y
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
   );
-}
-
-function drawCircle(x, y, r, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function endGame() {
-  gameOver = true;
-  drawGameOver();
-  sendScore();
-}
-
-function drawGameOver() {
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "white";
-  ctx.font = "40px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("GAME OVER", canvas.width / 2, 280);
-
-  ctx.font = "20px Arial";
-  ctx.fillText("Score: " + score, canvas.width / 2, 320);
-  ctx.fillText("Tap to restart", canvas.width / 2, 360);
-}
-
-function sendScore() {
-  if (tg && !scoreSent) {
-    tg.sendData(JSON.stringify({ score }));
-    scoreSent = true;
-  }
 }
 
 loop();
